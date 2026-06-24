@@ -19,6 +19,7 @@ import type {
   MonthInsightSummary,
 } from "@/lib/insights/types";
 import { createClient } from "@/lib/supabase/server";
+import { fetchPassThroughTransactionIds } from "@/lib/transactions/exclusions";
 import {
   getHouseholdViewingMonth,
 } from "@/lib/household/viewing-month";
@@ -70,11 +71,17 @@ export async function getInsightsPageData(month?: string): Promise<InsightsPageD
     selected
   );
 
+  const passThroughTransactionIds = await fetchPassThroughTransactionIds(
+    supabase,
+    profile.household_id
+  );
+
   const summary = buildMonthInsightSummary({
     month: selected,
     transactions,
     debts,
     profiles,
+    passThroughTransactionIds,
   });
 
   return {
@@ -197,11 +204,16 @@ export async function askAboutMonth(input: {
         input.householdId,
         parseISO(input.month)
       );
+      const passThroughTransactionIds = await fetchPassThroughTransactionIds(
+        supabase,
+        input.householdId
+      );
       contextJson = buildMonthInsightSummary({
         month: parseISO(input.month),
         transactions,
         debts,
         profiles,
+        passThroughTransactionIds,
       });
     }
 

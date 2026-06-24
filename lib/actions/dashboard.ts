@@ -21,6 +21,7 @@ import {
   getHouseholdViewingMonth,
   monthRangeFromViewingMonth,
 } from "@/lib/household/viewing-month";
+import { fetchPassThroughTransactionIds } from "@/lib/transactions/exclusions";
 
 async function getHouseholdContext() {
   const supabase = await createClient();
@@ -222,17 +223,22 @@ export async function getDashboardData(
 
   if (debtsError) throw new Error(debtsError.message);
 
-  const passThroughIds = (debtsRaw ?? [])
+  const passThroughIds = await fetchPassThroughTransactionIds(
+    supabase,
+    profile.household_id
+  );
+
+  const passThroughIdsForAmounts = (debtsRaw ?? [])
     .filter((debt) => debt.debt_type === "pass_through")
     .flatMap((debt) => [debt.inflow_transaction_id, debt.outflow_transaction_id])
     .filter((id): id is string => Boolean(id));
 
   let passThroughAmounts = new Map<string, number>();
-  if (passThroughIds.length > 0) {
+  if (passThroughIdsForAmounts.length > 0) {
     const { data: linkedTx, error: linkedError } = await supabase
       .from("transactions")
       .select("id, amount")
-      .in("id", passThroughIds);
+      .in("id", passThroughIdsForAmounts);
 
     if (linkedError) throw new Error(linkedError.message);
     passThroughAmounts = new Map(
@@ -260,7 +266,8 @@ export async function getDashboardData(
 
   const categoryMap = buildCategoryComparison(
     profileId ? scopedTransactions : monthTransactions,
-    profileNames
+    profileNames,
+    passThroughIds
   );
 
   const categoryComparison: CategorySpendRow[] = Object.entries(categoryMap)
@@ -280,15 +287,16 @@ export async function getDashboardData(
       return totalB - totalA;
     });
 
-  const stats = computeStats(scopedTransactions, debts);
+  const stats = computeStats(scopedTransactions, debts, passThroughIds);
   const runningBalance = buildRunningBalanceSeries(
     scopedTransactions,
     monthStart,
-    monthEnd
+    monthEnd,
+    passThroughIds
   );
 
   const daysToZero = scopedAccounts.map((account) =>
-    computeDaysToZero(account, cycleTransactions)
+    computeDaysToZero(account, cycleTransactions, new Date(), passThroughIds)
   );
 
   const scopedProfile = profileId

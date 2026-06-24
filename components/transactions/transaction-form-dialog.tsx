@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -59,6 +60,8 @@ const emptyValues: TransactionFormValues = {
   amount: "",
   tx_type: "expense",
   notes: "",
+  is_billing_error: false,
+  billing_error_status: "flagged",
 };
 
 type TransactionFormDialogProps = {
@@ -110,6 +113,8 @@ export function TransactionFormDialog({
         amount: formValues.amount,
         tx_type: formValues.tx_type,
         notes: formValues.notes,
+        is_billing_error: formValues.is_billing_error,
+        billing_error_status: formValues.billing_error_status,
       });
       setInternalDirection(formValues.internalDirection);
     } else {
@@ -447,6 +452,61 @@ export function TransactionFormDialog({
                 }))
               }
             />
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="tx-billing-error"
+                checked={values.is_billing_error}
+                onCheckedChange={(checked) =>
+                  setValues((current) => ({
+                    ...current,
+                    is_billing_error: checked === true,
+                    billing_error_status:
+                      checked === true
+                        ? current.billing_error_status || "flagged"
+                        : "",
+                  }))
+                }
+              />
+              <Label htmlFor="tx-billing-error" className="font-normal">
+                Billing error (exclude from spend totals)
+              </Label>
+            </div>
+            {values.is_billing_error ? (
+              <div className="space-y-2">
+                <Label htmlFor="tx-billing-status">Dispute status</Label>
+                <Select
+                  value={values.billing_error_status || "flagged"}
+                  onValueChange={(value) => {
+                    if (
+                      value === "flagged" ||
+                      value === "disputed" ||
+                      value === "resolved"
+                    ) {
+                      setValues((current) => ({
+                        ...current,
+                        billing_error_status: value,
+                      }));
+                    }
+                  }}
+                >
+                  <SelectTrigger id="tx-billing-status" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="flagged">Flagged</SelectItem>
+                    <SelectItem value="disputed">Disputed</SelectItem>
+                    <SelectItem value="resolved">Resolved</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Flagged or disputed transactions are excluded from dashboard
+                  and insight totals until resolved.
+                </p>
+              </div>
+            ) : null}
           </div>
 
           {error ? (

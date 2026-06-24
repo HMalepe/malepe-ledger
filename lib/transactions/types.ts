@@ -96,6 +96,8 @@ export type ImportPreview = {
   headers: string[];
 };
 
+export type BillingErrorStatus = "flagged" | "disputed" | "resolved";
+
 export type TransactionFormValues = {
   date: string;
   description: string;
@@ -105,4 +107,6 @@ export type TransactionFormValues = {
   amount: string;
   tx_type: TxType;
   notes: string;
+  is_billing_error: boolean;
+  billing_error_status: BillingErrorStatus | "";
 };

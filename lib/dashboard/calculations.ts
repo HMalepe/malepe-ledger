@@ -17,29 +17,37 @@ import type {
   DaysToZeroResult,
   RunningBalancePoint,
 } from "./types";
+import {
+  isExcludedFromHouseholdTotals,
+  isRealExpenseTx,
+  isRealIncomeTx,
+} from "@/lib/transactions/exclusions";
 
-export function isRealExpense(tx: DashboardTransaction): boolean {
-  return (
-    tx.tx_type === "expense" &&
-    !tx.is_internal_transfer &&
-    !tx.is_billing_error
-  );
+export function isRealExpense(
+  tx: DashboardTransaction,
+  passThroughIds: Set<string> = new Set()
+): boolean {
+  return isRealExpenseTx(tx, passThroughIds);
 }
 
-export function isRealIncome(tx: DashboardTransaction): boolean {
-  return tx.tx_type === "income" && !tx.is_internal_transfer && !tx.is_billing_error;
+export function isRealIncome(
+  tx: DashboardTransaction,
+  passThroughIds: Set<string> = new Set()
+): boolean {
+  return isRealIncomeTx(tx, passThroughIds);
 }
 
 export function computeStats(
   transactions: DashboardTransaction[],
-  debts: DashboardDebt[]
+  debts: DashboardDebt[],
+  passThroughIds: Set<string> = new Set()
 ): DashboardStats {
   const totalIncome = transactions
-    .filter(isRealIncome)
+    .filter((tx) => isRealIncome(tx, passThroughIds))
     .reduce((sum, tx) => sum + tx.amount, 0);
 
   const totalExpenses = transactions
-    .filter(isRealExpense)
+    .filter((tx) => isRealExpense(tx, passThroughIds))
     .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
   const moneyOwed = debts
@@ -56,11 +64,12 @@ export function computeStats(
 
 export function buildCategoryComparison(
   transactions: DashboardTransaction[],
-  profileNames: string[]
+  profileNames: string[],
+  passThroughIds: Set<string> = new Set()
 ): Record<string, Record<string, number>> {
   const result: Record<string, Record<string, number>> = {};
 
-  for (const tx of transactions.filter(isRealExpense)) {
+  for (const tx of transactions.filter((item) => isRealExpense(item, passThroughIds))) {
     const category = tx.category?.trim() || "Uncategorised";
     if (!result[category]) {
       result[category] = Object.fromEntries(profileNames.map((name) => [name, 0]));
@@ -75,7 +84,8 @@ export function buildCategoryComparison(
 export function buildRunningBalanceSeries(
   transactions: DashboardTransaction[],
   monthStart: Date,
-  monthEnd: Date
+  monthEnd: Date,
+  passThroughIds: Set<string> = new Set()
 ): RunningBalancePoint[] {
   const days: RunningBalancePoint[] = [];
   let cumulativeIncome = 0;
@@ -86,8 +96,8 @@ export function buildRunningBalanceSeries(
     const dayTransactions = transactions.filter((tx) => tx.date === dayKey);
 
     for (const tx of dayTransactions) {
-      if (isRealIncome(tx)) cumulativeIncome += tx.amount;
-      if (isRealExpense(tx)) cumulativeExpense += Math.abs(tx.amount);
+      if (isRealIncome(tx, passThroughIds)) cumulativeIncome += tx.amount;
+      if (isRealExpense(tx, passThroughIds)) cumulativeExpense += Math.abs(tx.amount);
     }
 
     days.push({
@@ -118,7 +128,8 @@ function getCycleStartDate(reference: Date, salaryDayOfMonth: number): Date {
 export function computeDaysToZero(
   account: DashboardAccount,
   transactions: DashboardTransaction[],
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  passThroughIds: Set<string> = new Set()
 ): DaysToZeroResult {
   const threshold = account.low_balance_threshold;
 
@@ -152,7 +163,7 @@ export function computeDaysToZero(
 
   const dailyNet = new Map<string, number>();
   for (const tx of accountTransactions) {
-  if (tx.is_internal_transfer || tx.is_billing_error) continue;
+    if (isExcludedFromHouseholdTotals(tx, passThroughIds)) continue;
     dailyNet.set(tx.date, (dailyNet.get(tx.date) ?? 0) + tx.amount);
   }
 

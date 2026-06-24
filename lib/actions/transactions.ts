@@ -25,6 +25,7 @@ import type {
 } from "@/lib/transactions/types";
 import { createClient } from "@/lib/supabase/server";
 import { learnMerchantCategoryMapping } from "@/lib/categories/suggest";
+import { assertAccountBelongsToHousehold } from "@/lib/household/membership";
 import {
   getHouseholdViewingMonth,
   monthRangeFromViewingMonth,
@@ -273,6 +274,10 @@ function buildTransactionPayload(
     currency: "ZAR",
     tx_type: txType,
     is_internal_transfer: txType === "internal_transfer",
+    is_billing_error: values.is_billing_error,
+    billing_error_status: values.is_billing_error
+      ? values.billing_error_status || "flagged"
+      : null,
     notes: values.notes.trim() || null,
     created_by: userId,
     row_hash: rowHash,
@@ -285,6 +290,11 @@ export async function createTransaction(
 ): Promise<ActionResult<TransactionRow>> {
   try {
     const { supabase, user, profile } = await getHouseholdContext();
+    await assertAccountBelongsToHousehold(
+      supabase,
+      values.account_id,
+      profile.household_id
+    );
     const payload = buildTransactionPayload(
       values,
       profile.household_id,
@@ -378,6 +388,11 @@ export async function updateTransaction(
 ): Promise<ActionResult<null>> {
   try {
     const { supabase, user, profile } = await getHouseholdContext();
+    await assertAccountBelongsToHousehold(
+      supabase,
+      values.account_id,
+      profile.household_id
+    );
     const payload = buildTransactionPayload(
       values,
       profile.household_id,
@@ -397,6 +412,8 @@ export async function updateTransaction(
         is_debit: payload.is_debit,
         tx_type: payload.tx_type,
         is_internal_transfer: payload.is_internal_transfer,
+        is_billing_error: payload.is_billing_error,
+        billing_error_status: payload.billing_error_status,
         notes: payload.notes,
         row_hash: payload.row_hash,
       })
@@ -598,6 +615,13 @@ export async function commitCsvImport(input: {
   }>
 > {
   try {
+    const { supabase, user, profile } = await getHouseholdContext();
+    await assertAccountBelongsToHousehold(
+      supabase,
+      input.accountId,
+      profile.household_id
+    );
+
     const previewResult = await previewCsvImport({
       csvText: input.csvText,
       accountId: input.accountId,
@@ -624,8 +648,6 @@ export async function commitCsvImport(input: {
           "Reconciliation failed. Review the warning and confirm before committing.",
       };
     }
-
-    const { supabase, user, profile } = await getHouseholdContext();
 
     const batchStatus =
       preview.openingBalance !== null &&

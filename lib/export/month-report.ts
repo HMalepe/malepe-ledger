@@ -1,6 +1,8 @@
 import { formatZar } from "@/lib/transactions/currency";
+import { computeHouseholdTotals } from "@/lib/transactions/exclusions";
 
 export type ExportTransactionRow = {
+  id?: string;
   date: string;
   description: string;
   reference: string | null;
@@ -9,11 +11,14 @@ export type ExportTransactionRow = {
   category: string | null;
   amount: number;
   tx_type: string;
+  is_internal_transfer?: boolean;
+  is_billing_error?: boolean;
 };
 
 export function buildMonthCsv(
   monthLabel: string,
-  transactions: ExportTransactionRow[]
+  transactions: ExportTransactionRow[],
+  passThroughIds: Set<string> = new Set()
 ): string {
   const headers = [
     "Date",
@@ -39,16 +44,14 @@ export function buildMonthCsv(
     ].join(",")
   );
 
-  const income = transactions
-    .filter((tx) => tx.amount > 0)
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const expenses = transactions
-    .filter((tx) => tx.amount < 0)
-    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const { income, expenses, surplus } = computeHouseholdTotals(
+    transactions,
+    passThroughIds
+  );
 
   return [
     `# Malepe Ledger export — ${monthLabel}`,
-    `# Income: ${formatZar(income)} | Expenses: ${formatZar(expenses)} | Surplus: ${formatZar(income - expenses)}`,
+    `# Income: ${formatZar(income)} | Expenses: ${formatZar(expenses)} | Surplus: ${formatZar(surplus)}`,
     headers.join(","),
     ...lines,
   ].join("\n");
@@ -63,14 +66,13 @@ function escapeCsv(value: string): string {
 
 export function buildMonthPrintHtml(
   monthLabel: string,
-  transactions: ExportTransactionRow[]
+  transactions: ExportTransactionRow[],
+  passThroughIds: Set<string> = new Set()
 ): string {
-  const income = transactions
-    .filter((tx) => tx.amount > 0)
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const expenses = transactions
-    .filter((tx) => tx.amount < 0)
-    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const { income, expenses, surplus } = computeHouseholdTotals(
+    transactions,
+    passThroughIds
+  );
 
   const rows = transactions
     .map(
@@ -105,7 +107,7 @@ export function buildMonthPrintHtml(
 <body>
   <h1>Malepe Ledger — ${escapeHtml(monthLabel)}</h1>
   <p class="meta">
-    Income: ${formatZar(income)} · Expenses: ${formatZar(expenses)} · Surplus: ${formatZar(income - expenses)}
+    Income: ${formatZar(income)} · Expenses: ${formatZar(expenses)} · Surplus: ${formatZar(surplus)}
   </p>
   <table>
     <thead>

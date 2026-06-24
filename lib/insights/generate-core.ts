@@ -13,6 +13,7 @@ import {
   recordApiCost,
 } from "./data";
 import type { CachedInsight } from "./types";
+import { fetchPassThroughTransactionIds } from "@/lib/transactions/exclusions";
 
 type GenerateCoreInput = {
   supabase: SupabaseClient;
@@ -46,6 +47,11 @@ export async function runInsightGeneration(
     input.deepHistoryMonths
   );
 
+  const passThroughTransactionIds = await fetchPassThroughTransactionIds(
+    input.supabase,
+    input.householdId
+  );
+
   const summaryJson = input.deepHistoryMonths
     ? buildDeepHistorySummary({
         month: selected,
@@ -53,12 +59,14 @@ export async function runInsightGeneration(
         transactions,
         debts,
         profiles,
+        passThroughTransactionIds,
       })
     : buildMonthInsightSummary({
         month: selected,
         transactions,
         debts,
         profiles,
+        passThroughTransactionIds,
       });
 
   let aiResult;

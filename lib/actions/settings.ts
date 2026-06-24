@@ -19,6 +19,12 @@ import type {
 } from "@/lib/settings/types";
 import { createClient } from "@/lib/supabase/server";
 import type { Category } from "@/lib/transactions/types";
+import {
+  assertProfileBelongsToHousehold,
+} from "@/lib/household/membership";
+import {
+  fetchPassThroughTransactionIds,
+} from "@/lib/transactions/exclusions";
 
 type ActionResult<T> =
   | { success: true; data: T }
@@ -205,6 +211,12 @@ export async function createAccount(
       return { success: false, error: "Name, institution, and owner are required" };
     }
 
+    await assertProfileBelongsToHousehold(
+      supabase,
+      values.owner_profile_id,
+      profile.household_id
+    );
+
     const { data, error } = await supabase
       .from("accounts")
       .insert(accountPayload(values, profile.household_id))
@@ -265,6 +277,12 @@ export async function updateAccount(
     if (!values.name.trim() || !values.institution.trim() || !values.owner_profile_id) {
       return { success: false, error: "Name, institution, and owner are required" };
     }
+
+    await assertProfileBelongsToHousehold(
+      supabase,
+      values.owner_profile_id,
+      profile.household_id
+    );
 
     const { error } = await supabase
       .from("accounts")
@@ -420,12 +438,15 @@ async function fetchExportTransactions(
     .from("transactions")
     .select(
       `
+      id,
       date,
       description,
       reference,
       category,
       amount,
       tx_type,
+      is_internal_transfer,
+      is_billing_error,
       accounts!inner (
         name,
         profiles!accounts_owner_profile_id_fkey (display_name)
@@ -449,6 +470,7 @@ async function fetchExportTransactions(
       : null;
 
     return {
+      id: tx.id,
       date: tx.date,
       description: tx.description,
       reference: tx.reference,
@@ -457,6 +479,8 @@ async function fetchExportTransactions(
       category: tx.category,
       amount: Number(tx.amount),
       tx_type: tx.tx_type,
+      is_internal_transfer: tx.is_internal_transfer,
+      is_billing_error: tx.is_billing_error,
     };
   });
 }
@@ -473,8 +497,12 @@ export async function exportViewingMonthCsv(): Promise<
       range.monthStartKey,
       range.monthEndKey
     );
+    const passThroughIds = await fetchPassThroughTransactionIds(
+      supabase,
+      profile.household_id
+    );
 
-    const content = buildMonthCsv(range.monthLabel, transactions);
+    const content = buildMonthCsv(range.monthLabel, transactions, passThroughIds);
     const filename = `malepe-ledger-${range.monthStartKey}.csv`;
 
     return { success: true, data: { filename, content } };
@@ -498,11 +526,15 @@ export async function exportViewingMonthPdf(): Promise<
       range.monthStartKey,
       range.monthEndKey
     );
+    const passThroughIds = await fetchPassThroughTransactionIds(
+      supabase,
+      profile.household_id
+    );
 
     return {
       success: true,
       data: {
-        html: buildMonthPrintHtml(range.monthLabel, transactions),
+        html: buildMonthPrintHtml(range.monthLabel, transactions, passThroughIds),
         monthLabel: range.monthLabel,
       },
     };

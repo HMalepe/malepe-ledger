@@ -142,11 +142,15 @@ export function buildMonthInsightSummary(input: {
   profiles: { id: string; display_name: string }[];
   scope?: "household" | "person";
   profileId?: string | null;
+  passThroughTransactionIds?: Set<string>;
 }): MonthInsightSummary {
   const range = getInsightMonthRange(input.month);
   const scope = input.scope ?? "household";
+  const passThroughIds = input.passThroughTransactionIds ?? new Set();
 
-  let allTransactions = input.transactions.filter(isCountable);
+  let allTransactions = input.transactions
+    .filter((tx) => !passThroughIds.has(tx.id))
+    .filter(isCountable);
   if (scope === "person" && input.profileId) {
     allTransactions = allTransactions.filter(
       (tx) => tx.owner_profile_id === input.profileId
@@ -239,20 +243,24 @@ export function buildDeepHistorySummary(input: {
   transactions: InsightTransaction[];
   debts: InsightDebtActivity[];
   profiles: { id: string; display_name: string }[];
+  passThroughTransactionIds?: Set<string>;
 }): MonthInsightSummary & {
   deep_history: true;
   months_included: number;
   monthly_expense_totals: Record<string, number>;
 } {
+  const passThroughIds = input.passThroughTransactionIds ?? new Set();
   const base = buildMonthInsightSummary({
     month: input.month,
     transactions: input.transactions,
     debts: input.debts,
     profiles: input.profiles,
+    passThroughTransactionIds: passThroughIds,
   });
 
   const monthlyTotals: Record<string, number> = {};
   for (const tx of input.transactions) {
+    if (passThroughIds.has(tx.id)) continue;
     if (tx.tx_type !== "expense" || tx.is_billing_error) continue;
     const monthKey = tx.date.slice(0, 7);
     monthlyTotals[monthKey] =
